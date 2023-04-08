@@ -482,20 +482,9 @@ void report_realtime_status()
   #ifdef USE_LINE_NUMBERS
     // Report current line number
     printPgmString(PSTR(",Ln:")); 
-    int32_t ln=0;
-    plan_block_t * pb = plan_get_current_block();
-    if(pb != NULL) {
-      ln = pb->line_number;
-    } 
-    printInteger(ln);
+    printInteger(st_get_linenumber());
   #endif
     
-  #ifdef REPORT_REALTIME_RATE
-    // Report realtime rate 
-    printPgmString(PSTR(",F:")); 
-    printFloat_RateValue(st_get_realtime_rate());
-  #endif    
-  
   if (bit_istrue(settings.status_report_mask,BITFLAG_RT_STATUS_LIMIT_PINS)) {
     printPgmString(PSTR(",Lim:"));
     print_unsigned_int8(limits_get_state(),2,N_AXIS);

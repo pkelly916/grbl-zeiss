@@ -50,13 +50,12 @@
 #include "gcode.h"
 #include "limits.h"
 #include "motion_control.h"
-#include "planner.h"
+#include "zeiss_stage.h"
 #include "print.h"
 #include "probe.h"
 #include "protocol.h"
 #include "report.h"
 #include "serial.h"
 #include "spindle_control.h"
-#include "stepper.h"
 
 #endif

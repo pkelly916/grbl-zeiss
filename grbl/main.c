@@ -31,7 +31,7 @@ int main(void)
   // Initialize system upon power-up.
   serial_init();   // Setup serial baud rate and interrupts
   settings_init(); // Load Grbl settings from EEPROM
-  stepper_init();  // Configure stepper pins and interrupt timers
+  mscope_init();   // initialize CAN and microscope stage settings
   system_init();   // Configure pinout pins and pin-change interrupt
   
   memset(&sys, 0, sizeof(system_t));  // Clear all system variables
@@ -68,11 +68,9 @@ int main(void)
     coolant_init();
     limits_init(); 
     probe_init();
-    plan_reset(); // Clear block buffer and planner variables
     st_reset(); // Clear stepper subsystem variables.
 
-    // Sync cleared gcode and planner positions to current system position.
-    plan_sync_position();
+    // Sync cleared gcode positions to current system position.
     gc_sync_position();
 
     // Reset system variables.

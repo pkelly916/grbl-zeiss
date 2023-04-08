@@ -215,16 +215,13 @@ void limits_go_home(uint8_t cycle_mask)
     homing_rate *= sqrt(n_active_axis); // [sqrt(N_AXIS)] Adjust so individual axes all move at homing rate.
     sys.homing_axis_lock = axislock;
 
-    plan_sync_position(); // Sync planner position to current machine position.
-    
     // Perform homing cycle. Planner buffer should be empty, as required to initiate the homing cycle.
     #ifdef USE_LINE_NUMBERS
-      plan_buffer_line(target, homing_rate, false, HOMING_CYCLE_LINE_NUMBER); // Bypass mc_line(). Directly plan homing motion.
+      queue_stage_cmd(target, homing_rate, false, HOMING_CYCLE_LINE_NUMBER); // Bypass mc_line(). Directly plan homing motion.
     #else
-      plan_buffer_line(target, homing_rate, false); // Bypass mc_line(). Directly plan homing motion.
+      queue_stage_cmd(target, homing_rate, false); // Bypass mc_line(). Directly plan homing motion.
     #endif
     
-    st_prep_buffer(); // Prep and fill segment buffer from newly planned block.
     st_wake_up(); // Initiate motion
     do {
       if (approach) {
@@ -245,8 +242,6 @@ void limits_go_home(uint8_t cycle_mask)
         sys.homing_axis_lock = axislock;
       }
 
-      st_prep_buffer(); // Check and prep segment buffer. NOTE: Should take no longer than 200us.
-
       // Exit routines: No time to run protocol_execute_realtime() in this loop.
       if (sys_rt_exec_state & (EXEC_SAFETY_DOOR | EXEC_RESET | EXEC_CYCLE_STOP)) {
         // Homing failure: Limit switches are still engaged after pull-off motion
@@ -266,7 +261,6 @@ void limits_go_home(uint8_t cycle_mask)
     } while (STEP_MASK & axislock);
 
     st_reset(); // Immediately force kill steppers and reset step segment buffer.
-    plan_reset(); // Reset planner buffer to zero planner current position and to clear previous motions.
 
     delay_ms(settings.homing_debounce_delay); // Delay to allow transient dynamics to dissipate.
 
@@ -323,7 +317,6 @@ void limits_go_home(uint8_t cycle_mask)
 
     }
   }
-  plan_sync_position(); // Sync planner position to homed machine position.
     
   // sys.state = STATE_HOMING; // Ensure system state set as homing before returning. 
 }

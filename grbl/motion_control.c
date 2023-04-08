@@ -62,15 +62,14 @@
   do {
     protocol_execute_realtime(); // Check for any run-time commands
     if (sys.abort) { return; } // Bail, if system abort.
-    if ( plan_check_full_buffer() ) { protocol_auto_cycle_start(); } // Auto-cycle start when buffer is full.
     else { break; }
   } while (1);
 
-  // Plan and queue motion into planner buffer
+  // plan_buffer_line replaced by Zeiss stage control logic
   #ifdef USE_LINE_NUMBERS
-    plan_buffer_line(target, feed_rate, invert_feed_rate, line_number);
+    queue_stage_cmd(target, feed_rate, invert_feed_rate, line_number);
   #else
-    plan_buffer_line(target, feed_rate, invert_feed_rate);
+    queue_stage_cmd(target, feed_rate, invert_feed_rate);
   #endif
 }
 
@@ -320,8 +319,6 @@ void mc_homing_cycle()
 
   // Reset the stepper and planner buffers to remove the remainder of the probe motion.
   st_reset(); // Reest step segment buffer.
-  plan_reset(); // Reset planner buffer. Zero planner positions. Ensure probing motion is cleared.
-  plan_sync_position(); // Sync planner position to current machine position.
 
   // TODO: Update the g-code parser code to not require this target calculation but uses a gc_sync_position() call.
   // NOTE: The target[] variable updated here will be sent back and synced with the g-code parser.

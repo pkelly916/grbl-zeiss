@@ -256,7 +256,6 @@ void protocol_execute_realtime()
 
         // If in CYCLE state, all hold states immediately initiate a motion HOLD.
         if (sys.state == STATE_CYCLE) {
-          st_update_plan_block_parameters(); // Notify stepper module to recompute for hold deceleration.
           sys.suspend = SUSPEND_ENABLE_HOLD; // Initiate holding cycle with flag.
         }
         // If IDLE, Grbl is not in motion. Simply indicate suspend ready state.
@@ -316,9 +315,8 @@ void protocol_execute_realtime()
             // TODO: Install return to pre-park position.
           }
           // Start cycle only if queued motions exist in planner buffer and the motion is not canceled.
-          if (plan_get_current_block() && bit_isfalse(sys.suspend,SUSPEND_MOTION_CANCEL)) {
+          if (st_get_linenumber() && bit_isfalse(sys.suspend,SUSPEND_MOTION_CANCEL)) {
             sys.state = STATE_CYCLE;
-            st_prep_buffer(); // Initialize step segment buffer before beginning cycle.
             st_wake_up();
           } else { // Otherwise, do nothing. Set and resume IDLE state.
             sys.state = STATE_IDLE;
@@ -355,9 +353,6 @@ void protocol_execute_realtime()
   // Overrides flag byte (sys.override) and execution should be installed here, since they 
   // are realtime and require a direct and controlled interface to the main stepper program.
 
-  // Reload step segment buffer
-  if (sys.state & (STATE_CYCLE | STATE_HOLD | STATE_MOTION_CANCEL | STATE_SAFETY_DOOR | STATE_HOMING)) { st_prep_buffer(); }  
-  
   // If safety door was opened, actively check when safety door is closed and ready to resume.
   // NOTE: This unlocks the SAFETY_DOOR state to a HOLD state, such that CYCLE_START can activate a resume.
   if (sys.state == STATE_SAFETY_DOOR) { 
@@ -382,7 +377,7 @@ void protocol_buffer_synchronize()
   do {
     protocol_execute_realtime();   // Check and execute run-time commands
     if (sys.abort) { return; } // Check for system abort
-  } while (plan_get_current_block() || (sys.state == STATE_CYCLE));
+  } while (st_get_linenumber() || (sys.state == STATE_CYCLE));
 }
 
 

@@ -115,11 +115,6 @@
 // goes from 18 or 16 to make room for the additional line number data in the plan_block_t struct
 // #define USE_LINE_NUMBERS // Disabled by default. Uncomment to enable.
 
-// Allows GRBL to report the real-time feed rate.  Enabling this means that GRBL will be reporting more 
-// data with each status update.
-// NOTE: This is experimental and doesn't quite work 100%. Maybe fixed or refactored later.
-// #define REPORT_REALTIME_RATE // Disabled by default. Uncomment to enable.
-
 // Upon a successful probe cycle, this option provides immediately feedback of the probe coordinates
 // through an automatically generated message. If disabled, users can still access the last probe
 // coordinates through Grbl '$#' print parameters.
@@ -155,6 +150,9 @@
 // you can use normally-closed switches, rather than the default normally-open switches.
 // NOTE: If you require individual control pins inverted, keep this macro disabled and simply alter
 //   the CONTROL_INVERT_MASK definition in cpu_map.h files.
+//
+// ZEISS NOTE: This will not be enabled since no stepper motors are used. Enabling it may cause 
+//              unexpected behavior.
 // #define INVERT_ALL_CONTROL_PINS // Default disabled. Uncomment to enable.
 
 // Inverts select limit pin states based on the following mask. This effects all limit pin functions, 
