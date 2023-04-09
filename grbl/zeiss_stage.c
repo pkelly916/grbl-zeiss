@@ -4,13 +4,14 @@
 */
 
 #include "grbl.h"
-#include "mcp_can.h"
+#include <mcp_can.h>
+#include <SPI.h>
+
+MCP_CAN CAN(9); // Set CS to pin 9
 
 typedef struct {
     int cmd_no;
-    long x;
-    long y;
-    long f;
+    long xyz[3];
     long speed;
 } cmd_struct;
 
@@ -22,22 +23,22 @@ volatile int cmd_q_back; // will always point to available free space. If B+1 = 
 int cmds_since_reset;
 #endif
 
-int last_run_cmd;
+volatile int last_run_cmd;
 
 // initialize CAN bus and microscope stage settings
 void mscope_init() {
-
+  
    char can_data[8];
 
-   while(CAN.begin(CAN_100KBPS) != CAN_OK) {
+   while(CAN.begin(MCP_ANY, CAN_100KBPS, MCP_16MHZ) != CAN_OK) {
        delay(100);
    }
+   CAN.setMode(MCP_NORMAL);
 
    cmds_since_reset = 0;
    last_run_cmd = 0;
-   mscope_available = 0;
 
-   cmd_buffer = calloc(sizeof(cmd_struct) * CMD_BUFFER_SIZE);
+   cmd_buffer = calloc(CMD_BUFFER_SIZE, sizeof(cmd_struct));
    cmd_q_front = cmd_q_back = 0;
    
    // Zeiss initialization commands
@@ -59,62 +60,101 @@ void mscope_init() {
    // we don't really care when the interrupt is called, 
    // by default it runs roughly once every millisecond 
    OCR0A = 0xA5;
+}
 
+// check if the axis is currently busy
+uint8_t move_available(char axis_idx) {
+  unsigned char len;
+  unsigned char can_data[8];
+  long unsigned int rxId;
+  char res;
+  char id;
+
+  // send is available command on can
+  sprintf(can_data, "%ct", ('X' + axis_idx));
+  if (axis_idx < 2) id = XYID;
+  else id = ZID;
+  CAN.sendMsgBuf(id, 0, 2, (unsigned char *)can_data);
+
+  // wait for response
+  // note: this is not normally how CAN buses work, but in this case it behaves more like a master/slave serial line
+  // a single CAN command will have an immediate CAN response. 
+  // the bus is not populated, the client (us) always initiates. 
+  while(CAN_MSGAVAIL != CAN.checkReceive()) {} 
+  while(CAN_MSGAVAIL == CAN.checkReceive()) {
+    
+    delay(5); // need to let the message settle into the buffer
+    CAN.readMsgBuf(&rxId, &len, can_data);
+
+    // data returned is either 0 or 255 in hex-ascii 
+    res = strtol((char *)can_data, NULL, 16);
+  }
+
+  return !res;
 }
 
 // main dequeue thread
 ISR(TIMER0_COMPA_vect) {
-    unsigned char len = 0;
-    unsigned char can_data[8];
+
+    static int fired[3] = {0, 0, 0};
 
     // check if there is a command to send in the buffer
     if (cmd_q_front != cmd_q_back) {
+
+      unsigned char len = 0;
+      unsigned char can_data[8];
+      char id;
     
-      // check if we can send a command to the microscope
-      sprintf(can_data, "Xt");
-      CAN.sendMsgBuf(114, 0, 2, (unsigned char *)can_data);
+      // foreach axis
+      for(char i = 0; i < 3; i++) {
+        if(move_available(i) && !fired[i]) {
 
-      // wait for a response and check it for 0/0xFF - will be 0 on good 
-      while(CAN_MSGAVAIL != CAN.checkReceive()) {
-          continue;
+          // this check is probably not needed in the grbl code
+          long cur_move = cmd_buffer[cmd_q_front].xyz[i];
+          if(cur_move != -1) {
+
+            if(i < 2) id = XYID;
+            else id = ZID;
+          
+            // send the command
+            sprintf(can_data, "%cJ%06lx", ('X' + i), cur_move&0xFFFFFF);
+            CAN.sendMsgBuf(id, 0, 8, (unsigned char *)can_data);
+          }
+
+          fired[i] = 1;
+        }
       }
-      while(CAN_MSGAVAIL == CAN.checkReceive()) {
-          CAN.readMsgBuf(&len, can_data);
-          switch(CAN.getCanId() & 0xFF) {
-              case 13: // Arduino is the target
-                  can_data[len] = 0;
-                  int resp = strtol((char *)can_data, NULL, 16);
-                  // the data is 0, send the command
-                  if (!resp) {
-                      sprintf(can_data, "XT+05lx", cmd_buffer[cmd_q_front].x);
-                      CAN.sendMsgBuf(114, 0, 2, (unsigned char *)can_data);
 
+      if(fired[0] && fired[1] && fired[2]) {
+        last_run_cmd = cmd_buffer[cmd_q_front].cmd_no;
+    
+        // clear the command from the buffer
+        memset(&cmd_buffer[cmd_q_front], 0, sizeof(cmd_struct));
+        cmd_q_front++;
+        if(cmd_q_front >= CMD_BUFFER_SIZE) {
+          cmd_q_front = 0;
+        }
 
-
-
-         // send the command 
-
-         // set last_run_cmd to cmd_no
-         
-         // clear the command from the buffer
+        fired[0] = fired[1] = fired[2] = 0;
+      }
     }
     // else do nothing
 }
 
-
 // core call to process and send coordinate data to microscope
+// target is float in grbl but changed to long for ease of testing
 #ifdef USE_LINE_NUMBERS
-  void queue_stage_cmd(float *target, float feed_rate, uint8_t invert_feed_rate, int32_t line_number) {
+  void queue_stage_cmd(long *target, float feed_rate, uint8_t invert_feed_rate, int32_t line_number) {
 #else
-  void queue_stage_cmd(float *target, float feed_rate, uint8_t invert_feed_rate) {
+  void queue_stage_cmd(long *target, float feed_rate, uint8_t invert_feed_rate) {
 #endif
       // generate new cmd struct object
       cmd_struct cmd;
 
       // assumes x, y, z in order
-      cmd.x = target[0];
-      cmd.y = target[1];
-      cmd.f = target[2];
+      cmd.xyz[0] = target[0];
+      cmd.xyz[1] = target[1];
+      cmd.xyz[2] = target[2];
 
       /*
          invert_feed_rate is a boolean, if it's true the feed rate was desired as 1/feed_rate 
@@ -131,15 +171,16 @@ ISR(TIMER0_COMPA_vect) {
 #endif
 
       // check if there's room in the queue for another command
+      // FIXME: this will hardlock the arduino if the buffer is filled before the ISR is started
       while(cmd_q_back + 1 == cmd_q_front || ((cmd_q_back + 1 == CMD_BUFFER_SIZE) && cmd_q_front == 0)) {
           // dwell here until there is
           // each delay statement costs 1ms, which aligns with a single ISR call
           // the original GRBL also dwelled when the queue was full, so original functionality isn't really changed
           delay(1);
       }
-      memcpy(cmd_buffer[cmd_q_back], cmd, sizeof(cmd_struct));
+      memcpy(&cmd_buffer[cmd_q_back], &cmd, sizeof(cmd_struct));
       cmd_q_back++;
-      if(cmd_q_back == CMD_BUFFER_SIZE) cmd_q_back = 0; // wrap around case
+      if(cmd_q_back >= CMD_BUFFER_SIZE) cmd_q_back = 0; // wrap around case
 }
 
 /* 

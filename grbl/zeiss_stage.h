@@ -6,7 +6,10 @@
 #ifndef zeiss_h
 #define zeiss_h
 
-#define CMD_BUFFER_SIZE 20
+#define CMD_BUFFER_SIZE 8
+
+#define XYID 0x72
+#define ZID  0xC
 
 // initialize CAN bus and microscope stage settings
 void mscope_init();
