@@ -4,8 +4,7 @@
 */
 
 #include "grbl.h"
-#include <mcp_can.h>
-#include <SPI.h>
+#include "libraries/mcp_can.h"
 
 MCP_CAN CAN(9); // Set CS to pin 9
 
